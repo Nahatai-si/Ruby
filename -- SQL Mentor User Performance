@@ -1,0 +1,85 @@
+-- SQL Mini Project 10/10
+-- SQL Mentor User Performance
+
+-- DROP TABLE user_submissions; 
+
+CREATE TABLE user_submissions (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT,
+    question_id INT,
+    points INT,
+    submitted_at TIMESTAMP WITH TIME ZONE,
+    username VARCHAR(50)
+);
+
+SELECT * FROM user_submissions;
+
+-- Q1. List All Distinct Users and Their Stats
+-- Description: Return the user name, total submissions, and total points earned by each user.
+-- Expected Output: A list of users with their submission count and total points.
+
+SELECT username, COUNT(id) AS total_submission, SUM(points) AS total_point
+FROM user_submissions
+GROUP BY 1
+ORDER BY 2 DESC;
+
+
+-- Q2. Calculate the Daily Average Points for Each User
+-- Description: For each day, calculate the average points earned by each user.
+-- Expected Output: A report showing the average points per user for each day.
+
+SELECT --EXTRACT(day from submitted_at) AS day
+TO_CHAR(submitted_at, 'DD-MM') as day, username, AVG(points) AS daily_avg_point
+FROM user_submissions
+GROUP BY 1,2
+ORDER BY username;
+
+-- Q3. Find the Top 3 Users with the Most Correct Submissions for Each Day
+-- Description: Identify the top 3 users with the most correct submissions for each day.
+-- Expected Output: A list of users and their correct submissions, ranked daily.
+
+WITH daily_submission AS (
+SELECT TO_CHAR(submitted_at, 'DD-MM') as daily, username, 
+SUM(CASE WHEN points > 0 THEN 1 ELSE 0 END) as correct_submission
+FROM user_submissions
+GROUP BY 1,2), 
+
+user_rank
+AS
+(
+SELECT daily, username, correct_submission, DENSE_RANK() OVER (PARTITION BY daily ORDER BY correct_submission DESC) AS Rank
+FROM daily_submission) 
+
+SELECT daily, username, correct_submission 
+FROM user_rank
+WHERE rank <= 3;
+
+--every day will have top 3 users based on high submission points
+
+--Q4. Find the Top 5 Users with the Highest Number of Incorrect Submissions
+--Description: Identify the top 5 users with the highest number of incorrect submissions.
+--Expected Output: A list of users with the count of incorrect submissions.
+
+SELECT username, SUM(CASE WHEN points < 0 THEN 1 ELSE 0 END) as incorrect_submission, 
+SUM(CASE WHEN points < 0 THEN points ELSE 0 END) as incorrect_submission_point, 
+SUM(CASE WHEN points > 0 THEN 1 ELSE 0 END) as correct_submission, SUM(points) AS points_earned,
+SUM(CASE WHEN points > 0 THEN points ELSE 0 END) as correct_submission_point_earned
+FROM user_submissions
+GROUP BY 1
+ORDER BY 2 DESC
+LIMIT 5;
+
+--Q5. Find the Top 10 Performers for Each Week
+--Description: Identify the top 10 users with the highest total points earned each week.
+--Expected Output: A report showing the top 10 users ranked by total points per week.
+
+SELECT *
+FROM 
+
+(SELECT EXTRACT(week from submitted_at) AS week_no, username, SUM(points) AS points_earned,
+DENSE_RANK() OVER (PARTITION BY EXTRACT(week from submitted_at) ORDER BY SUM(points) DESC) AS Rank
+FROM user_submissions
+GROUP BY 1,2
+ORDER BY week_no, points_earned DESC)
+
+WHERE Rank <= 10;
