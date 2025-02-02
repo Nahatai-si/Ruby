@@ -1,0 +1,261 @@
+-- Monday Coffee SCHEMAS
+
+DROP TABLE IF EXISTS sales;
+DROP TABLE IF EXISTS customers;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS city;
+
+-- Import Rules
+-- 1st import to city
+-- 2nd import to products
+-- 3rd import to customers
+-- 4th import to sales
+
+
+CREATE TABLE city
+(
+	city_id	INT PRIMARY KEY,
+	city_name VARCHAR(15),	
+	population	BIGINT,
+	estimated_rent	FLOAT,
+	city_rank INT
+);
+
+CREATE TABLE customers
+(
+	customer_id INT PRIMARY KEY,	
+	customer_name VARCHAR(25),	
+	city_id INT,
+	CONSTRAINT fk_city FOREIGN KEY (city_id) REFERENCES city(city_id)
+);
+
+
+CREATE TABLE products
+(
+	product_id	INT PRIMARY KEY,
+	product_name VARCHAR(35),	
+	Price float
+);
+
+
+CREATE TABLE sales
+(
+	sale_id	INT PRIMARY KEY,
+	sale_date	date,
+	product_id	INT,
+	customer_id	INT,
+	total FLOAT,
+	rating INT,
+	CONSTRAINT fk_products FOREIGN KEY (product_id) REFERENCES products(product_id),
+	CONSTRAINT fk_customers FOREIGN KEY (customer_id) REFERENCES customers(customer_id) 
+);
+
+--Monday Coffee Data Analysis--
+
+SELECT * FROM city;
+SELECT * FROM customers;
+SELECT * FROM products;
+SELECT * FROM sales;
+
+--1. Coffee Consumers Count
+--How many people in each city are estimated to consume coffee, given that 25% of the population does?
+SELECT city_name, ROUND(population * 0.25/1000000, 2) AS coffee_comsumer_in_million, city_rank
+FROM city
+ORDER BY 2 DESC;
+
+--2. Total Revenue from Coffee Sales
+--What is the total revenue generated from coffee sales across all cities in the last quarter of 2023?
+SELECT ct.city_name, SUM(s.total) AS total_revenue
+FROM sales s
+JOIN customers c
+ON s.customer_id = c.customer_id
+JOIN city ct
+ON ct.city_id = c.city_id
+--EXTRACT(QUARTER from s.sale_date) as qtr, 
+--EXTRACT(YEAR from s.sale_date) as year
+WHERE EXTRACT(YEAR from sale_date) = 2023
+		AND
+	EXTRACT(QUARTER from sale_date) = 4
+GROUP BY 1
+ORDER BY 2 DESC;
+		
+--3. Sales Count for Each Product
+--How many units of each coffee product have been sold?
+SELECT p.product_name, COUNT(s.sale_id) AS total_order
+FROM products p
+LEFT JOIN sales s
+ON p.product_id = s.product_id
+GROUP BY 1 
+ORDER BY 2 DESC;
+
+--4. Average Sales Amount per City
+--What is the average sales amount per customer in each city? SUM/CUSTOMER
+SELECT ct.city_name, SUM(s.total) AS total_revenue, COUNT(DISTINCT s.customer_id) AS total_cx,
+ROUND(SUM(s.total)::numeric/COUNT(DISTINCT s.customer_id)::numeric,2) AS avg_sale_per_cs
+FROM sales s
+JOIN customers c
+ON s.customer_id = c.customer_id
+JOIN city ct
+ON ct.city_id = c.city_id
+GROUP BY 1
+ORDER BY 2 DESC;
+
+--5. City Population and Coffee Consumers (25%)
+--Provide a list of cities along with their populations and estimated coffee consumers
+
+WITH city_table AS (
+SELECT city_name, ROUND(population * 0.25/1000000,2 ) AS coffee_customer
+FROM city),
+
+customer_table AS (
+SELECT ct.city_name, COUNT(DISTINCT c.customer_id) AS unique_cs
+FROM sales s
+JOIN customers c 
+ON s.customer_id = c.customer_id
+JOIN city ct
+ON ct.city_id = c.city_id
+GROUP BY 1)
+
+SELECT ct.city_name, ct.coffee_customer AS coffee_customer_million, unique_cs
+FROM city_table as ct
+JOIN customer_table as cs
+ON ct.city_name = cs.city_name;
+
+--6. Top Selling Products by City
+-- What are the top 3 selling products in each city based on sales volume?
+SELECT *
+FROM --table
+(SELECT ct.city_name, p.product_name, COUNT(s.sale_id) AS total_order, 
+DENSE_RANK () OVER (PARTITION BY ct.city_name ORDER BY COUNT(s.sale_id) DESC) AS Rank
+FROM sales s
+JOIN products p
+ON s.product_id = p.product_id
+JOIN customers c
+ON c.customer_id = s.customer_id
+JOIN city ct
+ON ct.city_id = c.city_id
+GROUP BY 1,2) AS t1
+WHERE Rank <= 3;
+
+--7. Customer Segmentation by City
+-- How many unique customers are there in each city who have purchased coffee products?
+
+SELECT ct.city_name, COUNT(DISTINCT c.customer_id) AS unique_cs
+FROM sales s
+JOIN customers c 
+ON s.customer_id = c.customer_id
+JOIN city ct
+ON ct.city_id = c.city_id
+WHERE s.product_id IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14)
+GROUP BY 1;
+
+--8. Average Sale vs Rent
+-- Find each city and their average sale per customer and avg rent per customer
+
+--15000/25 = 600 per customer rent
+--city and total/ total rent
+--conclusion
+WITH city_table AS (
+
+SELECT ct.city_name, SUM(s.total) AS total_revenue, COUNT(DISTINCT c.customer_id) AS total_cs,
+ROUND(SUM(s.total)::numeric/COUNT(DISTINCT s.customer_id)::numeric,2) AS avg_sale_per_cs
+
+FROM sales s
+JOIN customers c 
+ON s.customer_id = c.customer_id
+JOIN city ct
+ON ct.city_id = c.city_id
+WHERE s.product_id IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14)
+GROUP BY 1
+ORDER BY 2 DESC ),
+
+city_rent AS
+
+(SELECT city_name, estimated_rent
+FROM city)
+
+SELECT cr.city_name, cr.estimated_rent, ctt.avg_sale_per_cs, ctt.total_cs, cr.estimated_rent::numeric/ctt.total_cs::numeric AS avg_rent_per_cs
+FROM city_rent as cr
+JOIN city_table as ctt
+ON cr.city_name = ctt.city_name
+ORDER BY 3 DESC;
+
+--9. Monthly Sales Growth
+-- Sales growth rate: Calculate the percentage growth (or decline) in sales over different time periods (monthly) by each city
+
+WITH monthly_sale AS (
+SELECT ct.city_name, EXTRACT(month from sale_date) as month, EXTRACT(year from sale_date) as year, SUM (s.total) as total_sale
+FROM sales s
+JOIN customers c
+ON s.customer_id = c.customer_id
+JOIN city ct
+ON ct.city_id = c.city_id
+GROUP BY 1,2,3
+ORDER BY 1,3,2), 
+growth_ratio 
+AS
+(
+SELECT city_name, month, year, total_sale as cr_month_sale, 
+LAG(total_sale,1) OVER (PARTITION BY city_name ORDER BY year,month) AS last_month_sale
+from monthly_sale)
+
+
+SELECT city_name, month, year, cr_month_sale, last_month_sale, 
+ROUND((cr_month_sale-last_month_sale)::numeric/last_month_sale::numeric * 100, 2) AS growth_rate
+FROM growth_ratio
+WHERE last_month_sale IS NOT NULL;
+
+
+--10. Market Potential Analysis
+-- Identify top 3 city based on highest sales, return city name, total sale, total rent, total customers, estimated coffee consumer
+
+WITH city_table AS (
+
+SELECT ct.city_name, SUM(s.total) AS total_revenue, COUNT(DISTINCT c.customer_id) AS total_cs,
+ROUND(SUM(s.total)::numeric/COUNT(DISTINCT s.customer_id)::numeric,2) AS avg_sale_per_cs
+
+FROM sales s
+JOIN customers c 
+ON s.customer_id = c.customer_id
+JOIN city ct
+ON ct.city_id = c.city_id
+WHERE s.product_id IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14)
+GROUP BY 1
+ORDER BY 2 DESC ),
+
+city_rent AS
+
+(SELECT city_name, estimated_rent, ROUND((population * 0.25)/1000000, 3)  AS estimate_coffee_consumer_in_million
+FROM city)
+
+SELECT cr.city_name, 
+       ctt.total_revenue,
+       cr.estimated_rent, 
+       ctt.avg_sale_per_cs, 
+       ctt.total_cs, 
+       estimate_coffee_consumer_in_million,
+       ROUND(cr.estimated_rent::numeric / ctt.total_cs::numeric, 2) AS avg_rent_per_cs
+FROM city_rent as cr
+JOIN city_table as ctt
+ON cr.city_name = ctt.city_name
+ORDER BY 2 DESC;
+--Recommendations
+--After analyzing the data, the recommended top three cities for new store openings are:
+
+--City 1: Pune
+
+--Average rent per customer is very low (294.23)
+--Highest total revenue (1011290)
+--Average sales per customer is also high(19447.88)
+
+--City 2: Delhi
+
+--Highest estimated coffee consumers at 7.7 million.
+--Highest total number of customers, which is 68.
+--Average rent per customer is 330 (still under 500).
+
+--City 3: Jaipur
+
+--Highest number of customers, which is 69.
+--Average rent per customer is very low at 156.
+--Average sales per customer is better at 11.6k.
