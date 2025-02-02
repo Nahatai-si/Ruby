@@ -1,0 +1,136 @@
+--SQLite 
+--create new email column
+select customerid, firstname, lastname, country, email, lower(firstname) || '@google.com' AS new_email
+FROM customers
+WHERE email LIKE '%@yahoo.%';
+
+SELECT * FROM invoices
+WHERE invoicedate <= '2009-01-10';
+
+SELECT invoicedate, billingaddress, billingcity, UPPER(SUBSTR(billingcity, 1, 3)) AS first_letter, --snake case 
+total, ROUND(total * 0.07,2) AS VAT
+FROM invoices
+WHERE invoicedate BETWEEN '2009-01-01' AND '2009-01-31';
+
+--virtual table view
+CREATE VIEW usa_customers AS
+	 SELECT * FROM customers
+     WHERE country = 'USA'
+     
+ SELECT * from usa_customers;
+ 
+--drop view
+DROP VIEW usa_customers;
+
+--UNION append UNION no duplicate, UNION ALL allow duplicate
+SELECT firstname, country
+FROM customers
+WHERE country = 'Brazil' AND spending > 500
+UNION ALL
+SELECT firstname, country
+FROM customers
+WHERE country = 'Canada';
+
+--JOIN
+SELECT ar.artistid, ar.name AS artist_name, al.title, tr.name AS track_name, ge.name AS genre
+FROM artists ar
+JOIN albums al ON ar.artistid = al.artistid 
+JOIN tracks tr ON al.albumid = tr.albumid 
+JOIN genres ge ON tr.genreid = ge.genreid
+WHERE ge.name IN ('Jazz', 'Pop','Rock');
+
+--aggretion function
+SELECT ar.name, ge.name AS genre, COUNT(*) AS song
+FROM artists ar
+JOIN albums al ON ar.artistid = al.artistid 
+JOIN tracks tr ON al.albumid = tr.albumid 
+JOIN genres ge ON tr.genreid = ge.genreid
+WHERE ge.name IN ('Jazz', 'Pop','Rock')
+GROUP BY 1,2
+ORDER BY 2 DESC;
+
+SELECT COUNT(*) as n_customer, 
+COUNT(company), --count only value 
+COUNT(firstname)
+FROM customers;
+
+--replace null value
+SELECT firstname, company, COALESCE(company, 'No Data') AS clean_company
+FROM customers;
+
+SELECT firstname, company,
+CASE 
+WHEN company IS NULL THEN 'No Data'
+ELSE company
+END clean_company
+FROM customers;
+
+--------------
+SELECT firstname, company, 
+CASE
+	WHEN company IS NULL THEN 'B2C'
+    WHEN company IS NOT NULL THEN 'B2B'
+    ELSE 'Other'
+    END segment,
+country,
+CASE 
+   WHEN country IN ('USA', 'Canada') THEN 'North America'
+   WHEN country IN ('Italy', 'Belgium', 'France', 'Germany', 'Austria') THEN 'Europe'
+   ELSE 'other regions'
+   END region
+FROM customers
+ORDER BY 4;
+
+SELECT country, COUNT(*) AS n_customer
+FROM customers
+--join
+WHERE country <> 'USA'
+GROUP By 1
+--having = filter group    --where = filter unwanted data off table
+HAVING COUNT(*) >= 5 --AND country <> 'USA'
+ORDER BY 2 DESC;
+
+--cte
+--subquery
+--nest select clause
+SELECT firstname, email, country
+FROM (SELECT * FROM customers)
+WHERE country = 'USA'
+UNION
+SELECT firstname, email, country
+FROM (SELECT * FROM customers)
+WHERE country = 'Canada'
+ORDER By country;
+
+
+WITH usa_customers AS (
+  SELECT * FROM customers
+  WHERE country = 'USA'), 
+  invoice_y2009 AS (SELECT * FROM invoices WHERE invoicedate BETWEEN '2009-01-01' AND '2009-12-31')
+ SELECT SUM(total) AS total_revenue_usa_2009 FROM usa_customers t1
+ JOIN invoice_y2009 t2
+ ON t1.customerid = t2.customerid;
+ 
+ 
+--CREATE NEW COLUMN
+SELECT FirstName, LastName, FirstName || ' ' || lastname AS fullname, LOWER(FirstName) || '@company.com' || AS email
+FROM customers;
+
+SELECT name, milliseconds/ 60000 AS minute, bytes / (1024*1024) AS mb
+FROM tracks;
+
+SELECT company, 
+		CASE 
+        WHEN company IS NOt NULL THEN 'Corporate'
+        ELSE 'End Customer'
+        END AS Segment
+FROM customers
+
+--DATE --STRFTIME for SQLite-- --CAST change Datatype--
+SELECT invoicedate, 
+		CAST(STRFTIME('%Y',invoicedate) AS INT) AS year, 
+        (STRFTIME('%m',invoicedate) AS month,
+        STRFTIME('%d',invoicedate) AS day,
+        STRFTIME('%Y -%m',invoicedate) AS monthid
+FROM invoices
+WHERE year = 2010;
