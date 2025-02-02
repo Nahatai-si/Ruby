@@ -1,0 +1,115 @@
+INSERT INTO Orders (order_id, customer_id, order_date, total_amount) 
+VALUES 
+(1001, 1, '2024-01-10', 120.50),
+(1002, 2, '2024-02-01', 75.00),
+(1003, 1, '2024-03-05', 200.00),
+(1004, 3, '2024-01-15', 45.00),
+(1005, 2, '2024-03-18', 55.00),
+(1006, 1, '2024-03-20', 350.00),
+(1007, 3, '2024-02-10', 90.00),
+(1008, 4, '2024-02-25', 300.00);
+
+SELECT 
+    customer_id,
+    -- Recency: Calculate number of days - since the customer's last purchase (most recent)
+    CAST(JULIANDAY('2024-04-01') - JULIANDAY(MAX(order_date)) AS INTEGER) AS Recency,
+    -- Frequency: Number of total purchases made by the customer
+    COUNT(order_id) AS Frequency,
+    -- Monetary: Total amount of money spent by the customer
+    SUM(total_amount) AS Monetary
+FROM orders
+GROUP BY customer_id
+ORDER BY customer_id;
+
+WITH rfm_data AS (
+    SELECT 
+        customer_id,
+        CAST(JULIANDAY('2024-04-01') - JULIANDAY(MAX(order_date)) AS INTEGER) AS Recency,
+        COUNT(order_id) AS Frequency,
+        SUM(total_amount) AS Monetary
+    FROM orders
+    GROUP BY customer_id
+),
+
+-- Rank each customer by Recency, Frequency, and Monetary
+ranked_rfm AS (
+    SELECT 
+        customer_id,
+        Recency,
+        Frequency,
+        Monetary,
+        
+        -- Rank each customer for Recency
+        RANK() OVER (ORDER BY Recency) AS RecencyRank,
+        
+        -- Rank each customer for Frequency (higher is better)
+        RANK() OVER (ORDER BY Frequency DESC) AS FrequencyRank,
+        
+        -- Rank each customer for Monetary (higher is better)
+        RANK() OVER (ORDER BY Monetary DESC) AS MonetaryRank
+    FROM rfm_data
+)
+
+SELECT 
+    customer_id, 
+    Recency, 
+    Frequency, 
+    Monetary, 
+    RecencyRank, 
+    FrequencyRank, 
+    MonetaryRank
+FROM ranked_rfm;
+
+WITH rfm_data AS (
+    SELECT 
+        customer_id,
+        CAST(JULIANDAY('2024-04-01') - JULIANDAY(MAX(order_date)) AS INTEGER) AS Recency,
+        COUNT(order_id) AS Frequency,
+        SUM(total_amount) AS Monetary
+    FROM orders
+    GROUP BY customer_id
+),
+
+ranked_rfm AS (
+    SELECT 
+        customer_id, 
+        Recency, 
+        Frequency, 
+        Monetary,
+        
+        -- Calculate Recency Score (lower Recency = higher score)
+        CAST(CEIL(ROW_NUMBER() OVER (ORDER BY Recency) * 5.0 / (SELECT COUNT(*) FROM rfm_data)) AS INTEGER) AS RecencyScore,
+        
+        -- Calculate Frequency Score (higher Frequency = higher score)
+        CAST(CEIL(ROW_NUMBER() OVER (ORDER BY Frequency DESC) * 5.0 / (SELECT COUNT(*) FROM rfm_data)) AS INTEGER) AS FrequencyScore,
+        
+        -- Calculate Monetary Score (higher Monetary = higher score)
+        CAST(CEIL(ROW_NUMBER() OVER (ORDER BY Monetary DESC) * 5.0 / (SELECT COUNT(*) FROM rfm_data)) AS INTEGER) AS MonetaryScore
+        
+    FROM rfm_data
+)
+
+SELECT 
+    customer_id, 
+    Recency, 
+    Frequency, 
+    Monetary, 
+    RecencyScore, 
+    FrequencyScore, 
+    MonetaryScore,
+
+    -- Combine RecencyScore, FrequencyScore, and MonetaryScore into a single RFM Score (e.g., 555, 344, 123)
+    CAST(RecencyScore AS TEXT) || CAST(FrequencyScore AS TEXT) || CAST(MonetaryScore AS TEXT) AS RFM_Score,
+
+    -- Customer Segmentation Logic
+    CASE 
+        WHEN RecencyScore = 5 AND FrequencyScore = 5 AND MonetaryScore = 5 THEN 'Champion'
+        WHEN RecencyScore >= 4 AND FrequencyScore >= 4 THEN 'Loyal Customer'
+        WHEN RecencyScore >= 4 THEN 'Potential Loyalist'
+        WHEN RecencyScore = 1 AND FrequencyScore <= 2 THEN 'At Risk'
+        WHEN RecencyScore = 1 THEN 'Lost Customer'
+        ELSE 'Other'
+    END AS CustomerSegment
+
+FROM ranked_rfm
+ORDER BY customer_id;
