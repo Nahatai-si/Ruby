@@ -1,0 +1,58 @@
+with cte AS (
+SELECT 
+    a.Product,
+	a.Category,
+	a.Brand,
+	a.Description,
+	a.Sale_Price,
+	a.Cost_Price,
+	a.Image_url,
+	b.Date,
+	b.Customer_type,
+	b.Discount_Band,
+	b.Units_Sold,
+    (Sale_Price * Units_Sold) AS Revenue,
+    (Cost_Price * Units_Sold) AS Total_cost,
+	FORMAT(date,'MMMM') as Month,
+	FORMAT(date,'yyyy') as Year
+FROM Product_data a
+JOIN product_sales b
+ON a.Product_ID = b.Product) 
+
+SELECT *, (1-discount*1.0/100)* Revenue AS Discount_Revenue
+FROM cte a
+JOIN discount_data b
+ON a.Discount_Band = b.Discount_Band AND a.month = b.Month;
+
+
+WITH cte AS (
+    SELECT 
+        a.Product,
+        a.Category,
+        a.Brand,
+        a.Description,
+        a.Sale_Price,
+        a.Cost_Price,
+        a.Image_url,
+        -- Convert the Date column to a proper format if it's stored as a string
+        CONVERT(DATE, CONCAT(LEFT(CAST(b.Date AS VARCHAR), 4), '-', RIGHT(CAST(b.Date AS VARCHAR), 2), '-', SUBSTRING(CAST(b.Date AS VARCHAR), 6, 2))) AS Corrected_Date,
+        b.Customer_type,
+        b.Discount_Band,
+        b.Units_Sold,
+        (a.Sale_Price * b.Units_Sold) AS Revenue,
+        (a.Cost_Price * b.Units_Sold) AS Total_cost,
+        -- Extract Month and Year from the corrected date
+        FORMAT(CONVERT(DATE, CONCAT(LEFT(CAST(b.Date AS VARCHAR), 4), '-', RIGHT(CAST(b.Date AS VARCHAR), 2), '-', SUBSTRING(CAST(b.Date AS VARCHAR), 6, 2))), 'MMMM') AS Month,
+        FORMAT(CONVERT(DATE, CONCAT(LEFT(CAST(b.Date AS VARCHAR), 4), '-', RIGHT(CAST(b.Date AS VARCHAR), 2), '-', SUBSTRING(CAST(b.Date AS VARCHAR), 6, 2))), 'yyyy') AS Year
+    FROM Product_data a
+    JOIN product_sales b
+    ON a.Product_ID = b.Product
+) 
+
+SELECT 
+    *, 
+    (1 - b.Discount * 1.0 / 100) * a.Revenue AS Discount_Revenue
+FROM cte a
+JOIN discount_data b
+ON a.Discount_Band = b.Discount_Band 
+   AND a.Month = b.Month;
